@@ -30,11 +30,11 @@ type Block struct {
 }
 
 //创建创世区块
-func gcreateGensisBlock() *Block {
+func createGenesisBlock() *Block {
 
 	block := &Block{nil, time.Now().Unix(), []byte("gensis block"), nil, 0}
 	//计算当前区块的Hash值
-	block.setHash();
+	block.setHash()
 	return block
 }
 func (block *Block) setHash() {
@@ -77,7 +77,7 @@ func (b *Block) generateNextBlockByPow(data []byte) *Block {
 	for {
 		hash := b.calHash(nonce)
 		if strings.HasPrefix(hash, getDiff()) {
-			fmt.Println("挖矿成功");
+			fmt.Println("挖矿成功")
 			newBlock.Hash = []byte(hash)
 			newBlock.Nonce = nonce
 			return newBlock
@@ -89,7 +89,7 @@ func (b *Block) generateNextBlockByPow(data []byte) *Block {
 
 //模拟挖矿
 func main() {
-	genesisBlock := gcreateGensisBlock()
+	genesisBlock := createGenesisBlock()
 	powBlock := genesisBlock.generateNextBlockByPow([]byte("new Blcok"))
 
 	fmt.Println("data is ", string(powBlock.Data))
