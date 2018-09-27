@@ -3,96 +3,189 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 )
 
-const (
-	//当前挖矿的难度值
-	difficult = 5
-)
+const difficulty = 1
 
-//实现区块链中的Pow算法
-
-//简单的区块结构
 type Block struct {
-	//上一个区块
-	PreHash []byte
-	//时间戳
-	Timestamp int64
-	//交易信息
-	Data []byte
-	//当前区块的hash值
-	Hash []byte
-	//随机算
-	Nonce int64
+	Index      int
+	Timestamp  string
+	BPM        int
+	Hash       string
+	PrevHash   string
+	Difficulty int
+	Nonce      string
 }
 
-//创建创世区块
-func createGenesisBlock() *Block {
+var Blockchain []Block
 
-	block := &Block{nil, time.Now().Unix(), []byte("gensis block"), nil, 0}
-	//计算当前区块的Hash值
-	block.setHash()
-	return block
-}
-func (block *Block) setHash() {
-	//拼接区块的信息
-	//这里定义的规则是 ：前一个区块的Hash + 时间戳 + 交易信息 + Nonce .在取hash
-	blockInfo := hex.EncodeToString(block.PreHash) + string(block.Timestamp) + hex.EncodeToString(block.Data) + string(block.Nonce)
-	sha256 := sha256.New()
-	sha256.Write([]byte(blockInfo))
-	sum := sha256.Sum(nil)
-	block.Hash = sum
-
+type Message struct {
+	BPM int
 }
 
-//通过nonce值，计算hash值
-func (block *Block) calHash(nonce int64) string {
-	//拼接区块的信息
-	//这里定义的规则是 ：前一个区块的Hash + 时间戳 + 交易信息 + Nonce .在取hash
-	blockInfo := hex.EncodeToString(block.PreHash) + string(block.Timestamp) + hex.EncodeToString(block.Data) + string(nonce)
-	sha256 := sha256.New()
-	sha256.Write([]byte(blockInfo))
-	sum := sha256.Sum(nil)
-	return hex.EncodeToString(sum);
-}
+var mutex = &sync.Mutex{}
 
-func getDiff() string {
-	preHash := make([]byte, difficult)
-	for i := 0; i < difficult; i++ {
-		preHash[i] = '0';
-	}
-	return string(preHash)
-}
+func generateBlock(oldBlock Block, BPM int) Block {
+	var newBlock Block
 
-//通过pow的方式模拟挖矿
-func (b *Block) generateNextBlockByPow(data []byte) *Block {
-	newBlock := &Block{b.PreHash, time.Now().Unix(), data, nil, 0}
+	t := time.Now()
 
-	//开始挖矿，不断改变Nonce值，最终实现计算下来的hash的0的个数小于系统的难度值
-	var nonce int64 = 1
+	newBlock.Index = oldBlock.Index + 1
+	newBlock.Timestamp = t.String()
+	newBlock.BPM = BPM
+	newBlock.PrevHash = oldBlock.Hash
+	newBlock.Difficulty = difficulty
 
-	for {
-		hash := b.calHash(nonce)
-		if strings.HasPrefix(hash, getDiff()) {
-			fmt.Println("挖矿成功")
-			newBlock.Hash = []byte(hash)
-			newBlock.Nonce = nonce
-			return newBlock
+	for i := 0; ; i++ {
+		hex := fmt.Sprintf("%x", i)
+		newBlock.Nonce = hex
+		if !isHashValid(calculateHash(newBlock), newBlock.Difficulty) {
+			fmt.Println(calculateHash(newBlock), " do more work!")
+			time.Sleep(time.Second)
+			continue
+		} else {
+			fmt.Println(calculateHash(newBlock), " work done!")
+			newBlock.Hash = calculateHash(newBlock)
+			break
 		}
-		nonce++
+
 	}
+	return newBlock
+}
+
+func isHashValid(hash string, difficulty int) bool {
+	//复制 difficulty 个0，并返回新字符串，当 difficulty 为2 ，则 prefix 为 00
+	prefix := strings.Repeat("0", difficulty)
+	// HasPrefix判断字符串 hash 是否包含前缀 prefix
+	return strings.HasPrefix(hash, prefix)
+}
+
+func calculateHash(block Block) string {
+	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash + block.Nonce
+	h := sha256.New()
+	h.Write([]byte(record))
+	hashed := h.Sum(nil)
+	return hex.EncodeToString(hashed)
+}
+
+func isBlockValid(newBlock, oldBlock Block) bool {
+	if oldBlock.Index+1 != newBlock.Index {
+		return false
+	}
+
+	if oldBlock.Hash != newBlock.PrevHash {
+		return false
+	}
+
+	if calculateHash(newBlock) != newBlock.Hash {
+		return false
+	}
+
+	return true
+}
+
+func run() error {
+	mux := makeMuxRouter()
+	httpAddr := os.Getenv("ADDR")
+	log.Println("Listening on ", os.Getenv("ADDR"))
+	s := &http.Server{
+		Addr:           ":" + httpAddr,
+		Handler:        mux,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
+	if err := s.ListenAndServe(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func makeMuxRouter() http.Handler {
+	muxRouter := mux.NewRouter()
+	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
+	muxRouter.HandleFunc("/", handleWriteBlock).Methods("POST")
+	return muxRouter
+}
+
+func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
+	bytes, err := json.MarshalIndent(Blockchain, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	io.WriteString(w, string(bytes))
+}
+
+func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var m Message
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&m); err != nil {
+		respondWithJSON(w, r, http.StatusBadRequest, r.Body)
+		return
+	}
+	defer r.Body.Close()
+
+	//ensure atomicity when creating new block
+	mutex.Lock()
+	newBlock := generateBlock(Blockchain[len(Blockchain)-1], m.BPM)
+	mutex.Unlock()
+
+	if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
+		Blockchain = append(Blockchain, newBlock)
+		spew.Dump(Blockchain)
+	}
+
+	respondWithJSON(w, r, http.StatusCreated, newBlock)
 
 }
 
-//模拟挖矿
-func main() {
-	genesisBlock := createGenesisBlock()
-	powBlock := genesisBlock.generateNextBlockByPow([]byte("new Blcok"))
+func respondWithJSON(w http.ResponseWriter, r *http.Request, code int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	response, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("HTTP 500: Internal Server Error"))
+		return
+	}
+	w.WriteHeader(code)
+	w.Write(response)
+}
 
-	fmt.Println("data is ", string(powBlock.Data))
-	fmt.Println("dataHex is ", hex.EncodeToString(powBlock.Data))
-	fmt.Println("nonce is ", powBlock.Nonce)
+func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go func() {
+		t := time.Now()
+		genesisBlock := Block{}
+		genesisBlock = Block{0, t.String(), 0, calculateHash(genesisBlock), "", difficulty, ""}
+		spew.Dump(genesisBlock)
+
+		mutex.Lock()
+		Blockchain = append(Blockchain, genesisBlock)
+		mutex.Unlock()
+	}()
+	log.Fatal(run())
+
 }
