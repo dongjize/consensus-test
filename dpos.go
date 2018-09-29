@@ -3,128 +3,99 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"log"
+	"fmt"
 	"math/rand"
-	"sort"
+	"strconv"
 	"time"
 )
 
-//定义区块结构体
 type Block struct {
 	Index     int
 	Timestamp string
-	BPM       int
-	Hash      string
 	PrevHash  string
-	Delegate  string
+	Hash      string
+	Data      []byte
+	Delegate  *Node // the miner
 }
 
-// 创建区块函数
-func generateBlock(oldBlock Block, _BMP int, address string) (Block, error) {
-	var newBlock Block
-	t := time.Now()
-
-	newBlock.Index = oldBlock.Index + 1
-	newBlock.Timestamp = t.String()
-	newBlock.BPM = _BMP
-	newBlock.PrevHash = oldBlock.Hash
-	newBlock.Hash = createBlockHash(newBlock)
-	newBlock.Delegate = address
-
-	return newBlock, nil
+func GenesisBlock() Block {
+	gene := Block{0, time.Now().String(), "", "", []byte("genesis block"), nil}
+	gene.Hash = string(blockHash(gene))
+	return Block{}
 }
 
-//生成区块hash
-func createBlockHash(block Block) string {
-	record := string(block.Index) + block.Timestamp + string(block.BPM) + block.PrevHash
-	sha3 := sha256.New()
-	sha3.Write([] byte(record))
-	hash := sha3.Sum(nil)
-	return hex.EncodeToString(hash)
+// generate the hash of a block
+func blockHash(block Block) []byte {
+	record := strconv.Itoa(block.Index) + block.Timestamp + block.PrevHash + hex.EncodeToString(block.Data)
+	h := sha256.New()
+	h.Write([]byte(record))
+	hashed := h.Sum(nil)
+	return hashed
 }
 
-// 简单的检验区块函数
-func isBlockValid(newBlock, oldBlock Block) bool {
-	if oldBlock.Index+1 != newBlock.Index {
-		return false
+//节点类型
+type Node struct {
+	Name  string //节点名称
+	Votes int    // 被选举的票数
+}
+
+func (node *Node) GenerateNewBlock(lastBlock Block, data []byte) Block {
+	var newBlock = Block{lastBlock.Index + 1, time.Now().String(), lastBlock.Hash, "", data, nil}
+	newBlock.Hash = hex.EncodeToString(blockHash(newBlock))
+	newBlock.Delegate = node
+	return newBlock
+}
+
+//创建节点
+var NodeArr = make([]Node, 100)
+
+func CreateNode() {
+	for i := 0; i < 100; i++ {
+		name := fmt.Sprintf("NODE %d num.", i+1)
+		NodeArr[i] = Node{name, 0}
 	}
+}
 
-	if newBlock.PrevHash != oldBlock.Hash {
-		return false
+//简单模拟投票
+func Vote() {
+	for i := 0; i < 100; i++ {
+		rand.Seed(time.Now().UnixNano())
+		time.Sleep(100000)
+		vote := rand.Intn(10000) + 1
+		NodeArr[i].Votes = vote
+		fmt.Printf("Node [%d] votes is [%d].\n", i, vote)
 	}
-	return true
 }
 
-// 区块集合
-var blockChain []Block
-
-// dpos里的超级节点结构体（受托人）
-type Trustee struct {
-	name  string
-	votes int
-}
-
-type trusteeList [] Trustee
-
-// 下面的三个函数是为了排序使用，大家可以查下go的排序还是很强大的
-func (_trusteeList trusteeList) Len() int {
-	return len(_trusteeList)
-}
-func (_trusteeList trusteeList) Swap(i, j int) {
-	_trusteeList[i], _trusteeList[j] = _trusteeList[j], _trusteeList[i]
-}
-func (_trusteeList trusteeList) Less(i, j int) bool {
-	return _trusteeList[j].votes < _trusteeList[i].votes
-}
-
-// 选举获得投票数最高的前5节点作为超级节点，并打乱其顺序
-func selectTrustee() ([]Trustee) {
-	_trusteeList := [] Trustee{
-		{"node1", rand.Intn(100)},
-		{"node2", rand.Intn(100)},
-		{"node3", rand.Intn(100)},
-		{"node4", rand.Intn(100)},
-		{"node5", rand.Intn(100)},
-		{"node6", rand.Intn(100)},
-		{"node7", rand.Intn(100)},
-		{"node8", rand.Intn(100)},
-		{"node9", rand.Intn(100)},
-		{"node10", rand.Intn(100)},
-		{"node11", rand.Intn(100)},
-		{"node12", rand.Intn(100)},
+//elect the 21 nodes with most votes
+func SortNodes() []Node {
+	n := NodeArr
+	for i := 0; i < len(n); i++ {
+		for j := 0; j < len(n)-1; j++ {
+			if n[j].Votes < n[j+1].Votes {
+				n[j], n[j+1] = n[j+1], n[j]
+			}
+		}
 	}
-	sort.Sort(trusteeList(_trusteeList))
-	result := _trusteeList[:5]
-	_trusteeList = result[1:]
-	_trusteeList = append(_trusteeList, result[0])
-	log.Println("当前超级节点列表是", _trusteeList)
-	return _trusteeList
+	return n[:21]
 }
-
 func main() {
-	t := time.Now()
-
-	// init gensis block（创建创世块，真正的可不是这么简单的，这里只做流程实现）
-	genesisBlock := Block{0, t.String(), 0, createBlockHash(Block{}), "", ""}
-	blockChain = append(blockChain, genesisBlock) // 这里只是完成了一次dpos的写区块操作，eos真正的是每个节点实现6个区块，并且所有超级节点（21个）轮完，之后再做选举
-	var trustee Trustee
-	for _, trustee = range selectTrustee() {
-		_BPM := rand.Intn(100)
-		blockHeight := len(blockChain)
-		oldBlock := blockChain[blockHeight-1]
-		newBlock, err := generateBlock(oldBlock, _BPM, trustee.name)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		if isBlockValid(newBlock, oldBlock) {
-			blockChain = append(blockChain, newBlock)
-			log.Println("当前操作区块的节点是: ", trustee.name)
-			log.Println("当前区块数量是: ", len(blockChain)-1)
-			log.Println("当前区块信息: ", blockChain[len(blockChain)-1])
-
-		}
-
+	CreateNode()
+	fmt.Print("###### Create node list: \n")
+	fmt.Println(NodeArr)
+	fmt.Print("###### Vote node: \n")
+	Vote()
+	nodes := SortNodes()
+	fmt.Print("###### Get super node: \n")
+	fmt.Println(nodes)
+	// create the genesis block
+	gene := GenesisBlock()
+	lastBlock := gene
+	fmt.Print("###### Begin producing block: \n")
+	for i := 0; i < len(nodes); i++ {
+		fmt.Printf("Node [%s] genenrates block with votes %d.\n", nodes[i].Name, nodes[i].Votes)
+		lastBlock = nodes[i].GenerateNewBlock(lastBlock, []byte(fmt.Sprintf("new block %d", i)))
+		fmt.Print(lastBlock)
+		fmt.Print("\n")
 	}
 }

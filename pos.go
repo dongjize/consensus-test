@@ -64,7 +64,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println("HTTP Server Listening on port :", httpPort)
+	log.Println("HTTP Server Listening on port:", httpPort)
 	defer server.Close()
 
 	go func() {
@@ -90,8 +90,10 @@ func main() {
 	}
 }
 
-// pickWinner creates a lottery pool of validators and chooses the validator who gets to forge a block to the blockchain
-// by random selecting from the pool, weighted by amount of tokens staked
+/*
+creates a lottery pool of validators and chooses the validator who gets to forge a block to the
+blockchain by random selecting from the pool, weighted by amount of tokens staked
+ */
 func pickWinner() {
 	time.Sleep(30 * time.Second)
 	mutex.Lock()
@@ -99,7 +101,7 @@ func pickWinner() {
 	mutex.Unlock()
 
 	lotteryPool := []string{}
-	if len(temp) > 0 {
+	if len(temp) > 0 { // check if there are some blocks proposed in temp blocks container
 
 		// slightly modified traditional proof of stake algorithm
 		// from all validators who submitted a block, weight them by the number of staked tokens

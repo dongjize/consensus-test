@@ -21,6 +21,7 @@ import (
 
 const difficulty = 1
 
+// Block represents each 'item' in the blockchain
 type Block struct {
 	Index      int
 	Timestamp  string
@@ -31,79 +32,43 @@ type Block struct {
 	Nonce      string
 }
 
+// Blockchain is a series of validated Blocks
 var Blockchain []Block
 
+// Message takes incoming JSON payload for writing heart rate
 type Message struct {
 	BPM int
 }
 
 var mutex = &sync.Mutex{}
 
-func generateBlock(oldBlock Block, BPM int) Block {
-	var newBlock Block
-
-	t := time.Now()
-
-	newBlock.Index = oldBlock.Index + 1
-	newBlock.Timestamp = t.String()
-	newBlock.BPM = BPM
-	newBlock.PrevHash = oldBlock.Hash
-	newBlock.Difficulty = difficulty
-
-	for i := 0; ; i++ {
-		hex := fmt.Sprintf("%x", i)
-		newBlock.Nonce = hex
-		if !isHashValid(calculateHash(newBlock), newBlock.Difficulty) {
-			fmt.Println(calculateHash(newBlock), " do more work!")
-			time.Sleep(time.Second)
-			continue
-		} else {
-			fmt.Println(calculateHash(newBlock), " work done!")
-			newBlock.Hash = calculateHash(newBlock)
-			break
-		}
-
-	}
-	return newBlock
-}
-
-func isHashValid(hash string, difficulty int) bool {
-	//复制 difficulty 个0，并返回新字符串，当 difficulty 为2 ，则 prefix 为 00
-	prefix := strings.Repeat("0", difficulty)
-	// HasPrefix判断字符串 hash 是否包含前缀 prefix
-	return strings.HasPrefix(hash, prefix)
-}
-
-func calculateHash(block Block) string {
-	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash + block.Nonce
-	h := sha256.New()
-	h.Write([]byte(record))
-	hashed := h.Sum(nil)
-	return hex.EncodeToString(hashed)
-}
-
-func isBlockValid(newBlock, oldBlock Block) bool {
-	if oldBlock.Index+1 != newBlock.Index {
-		return false
+func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	if oldBlock.Hash != newBlock.PrevHash {
-		return false
-	}
+	go func() {
+		t := time.Now()
+		genesisBlock := Block{}
+		genesisBlock = Block{0, t.String(), 0, calculateHash(genesisBlock), "", difficulty, ""}
+		spew.Dump(genesisBlock)
 
-	if calculateHash(newBlock) != newBlock.Hash {
-		return false
-	}
+		mutex.Lock()
+		Blockchain = append(Blockchain, genesisBlock)
+		mutex.Unlock()
+	}()
+	log.Fatal(run())
 
-	return true
 }
 
+// web server
 func run() error {
 	mux := makeMuxRouter()
-	httpAddr := os.Getenv("ADDR")
-	log.Println("Listening on ", os.Getenv("ADDR"))
+	httpPort := os.Getenv("PORT")
+	log.Println("HTTP Server Listening on port :", httpPort)
 	s := &http.Server{
-		Addr:           ":" + httpAddr,
+		Addr:           ":" + httpPort,
 		Handler:        mux,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
@@ -117,6 +82,7 @@ func run() error {
 	return nil
 }
 
+// create handlers
 func makeMuxRouter() http.Handler {
 	muxRouter := mux.NewRouter()
 	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
@@ -124,6 +90,7 @@ func makeMuxRouter() http.Handler {
 	return muxRouter
 }
 
+// write blockchain when we receive an http request
 func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
 	bytes, err := json.MarshalIndent(Blockchain, "", "  ")
 	if err != nil {
@@ -133,6 +100,7 @@ func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, string(bytes))
 }
 
+// takes JSON payload as an input for heart rate (BPM)
 func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var m Message
@@ -170,22 +138,62 @@ func respondWithJSON(w http.ResponseWriter, r *http.Request, code int, payload i
 	w.Write(response)
 }
 
-func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal(err)
+// make sure block is valid by checking index, and comparing the hash of the previous block
+func isBlockValid(newBlock, oldBlock Block) bool {
+	if oldBlock.Index+1 != newBlock.Index {
+		return false
 	}
 
-	go func() {
-		t := time.Now()
-		genesisBlock := Block{}
-		genesisBlock = Block{0, t.String(), 0, calculateHash(genesisBlock), "", difficulty, ""}
-		spew.Dump(genesisBlock)
+	if oldBlock.Hash != newBlock.PrevHash {
+		return false
+	}
 
-		mutex.Lock()
-		Blockchain = append(Blockchain, genesisBlock)
-		mutex.Unlock()
-	}()
-	log.Fatal(run())
+	if calculateHash(newBlock) != newBlock.Hash {
+		return false
+	}
 
+	return true
+}
+
+// SHA256 hashing
+func calculateHash(block Block) string {
+	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash + block.Nonce
+	h := sha256.New()
+	h.Write([]byte(record))
+	hashed := h.Sum(nil)
+	return hex.EncodeToString(hashed)
+}
+
+// create a new block using previous block's hash
+func generateBlock(oldBlock Block, BPM int) Block {
+	var newBlock Block
+
+	t := time.Now()
+
+	newBlock.Index = oldBlock.Index + 1
+	newBlock.Timestamp = t.String()
+	newBlock.BPM = BPM
+	newBlock.PrevHash = oldBlock.Hash
+	newBlock.Difficulty = difficulty
+
+	for i := 0; ; i++ {
+		hex := fmt.Sprintf("%x", i)
+		newBlock.Nonce = hex
+		if !isHashValid(calculateHash(newBlock), newBlock.Difficulty) {
+			fmt.Println(calculateHash(newBlock), " do more work!")
+			time.Sleep(time.Second)
+			continue
+		} else {
+			fmt.Println(calculateHash(newBlock), " work done!")
+			newBlock.Hash = calculateHash(newBlock)
+			break
+		}
+
+	}
+	return newBlock
+}
+
+func isHashValid(hash string, difficulty int) bool {
+	prefix := strings.Repeat("0", difficulty)
+	return strings.HasPrefix(hash, prefix)
 }
