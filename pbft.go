@@ -94,7 +94,9 @@ func (node *nodeInfo) onRequest(writer http.ResponseWriter, request *http.Reques
 	if len(request.Form["message"]) > 0 {
 		node.writer = writer
 		hashed, sign, opts := generateRSASignature(request.Form["message"][0])
-		node.broadcastPrePrepare(sign, "/onPrePrepare", hashed, opts)
+		node.broadcastPrePrepare(sign, "/prePrepare", hashed, opts)
+	} else {
+		fmt.Println("pre-prepare: authentication failed")
 	}
 
 }
@@ -104,7 +106,7 @@ func (node *nodeInfo) broadcastPrePrepare(sign []byte, path string, hashed []byt
 	e := rsa.VerifyPSS(pubK, crypto.MD5, hashed, []byte(sign), opts)
 
 	if e != nil {
-		fmt.Println("authentication failed")
+		fmt.Println("pre-prepare: authentication failed")
 		return
 	}
 
@@ -154,11 +156,11 @@ func (node *nodeInfo) onPrePrepare(writer http.ResponseWriter, request *http.Req
 		//nodeId := onRequest.Form["nodeId"][0]
 		isMACEqual := checkMAC([]byte(message), []byte(mac), []byte(sessionK))
 		if isMACEqual {
-			newMsg := "message for onPrepare"
+			newMsg := "message for prepare"
 			newMAC := generateMAC([]byte(newMsg), []byte(sessionK))
-			node.broadcast("/onPrepare", []byte(newMsg), newMAC)
+			node.broadcast("/prepare", []byte(newMsg), newMAC)
 		} else {
-			fmt.Println("onPrePrepare: authentication failed")
+			fmt.Println("prepare: authentication failed")
 		}
 	}
 
@@ -203,11 +205,11 @@ func (node *nodeInfo) authentication(request *http.Request) {
 			isMACEqual := checkMAC([]byte(message), []byte(mac), []byte(sessionK))
 			if isMACEqual {
 				// then PBFT consensus is achieved; onCommit the feedback to browser
-				newMsg := "message for onCommit"
+				newMsg := "message for commit"
 				newMAC := generateMAC([]byte(newMsg), []byte(sessionK))
-				node.broadcast("/onCommit", []byte(newMsg), []byte(newMAC))
+				node.broadcast("/commit", []byte(newMsg), []byte(newMAC))
 			} else {
-				fmt.Println("onPrepare: authentication failed")
+				fmt.Println("commit: authentication failed")
 			}
 		}
 	}
