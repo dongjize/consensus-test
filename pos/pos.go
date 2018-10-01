@@ -92,8 +92,9 @@ func createNewBlock(lastBlock Block, data string) Block {
 	newBlock.PrevHash = lastBlock.Hash
 	newBlock.Data = data
 	time.Sleep(100000000)
-	rand.Seed(time.Now().Unix())
-	var rd = rand.Intn(15)
+	randMaker := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var rd = randMaker.Intn(15)
+	fmt.Print(rd)
 	node := addr[rd]
 	fmt.Println()
 	fmt.Printf("Node %s adds a block.\n", node.Address)
