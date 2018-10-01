@@ -51,9 +51,9 @@ func main() {
 	//http协议的回调函数
 	//http://localhost:1111/req?warTime=8888
 	http.HandleFunc("/req", node.onRequest)
-	http.HandleFunc("/prePrepare", node.prePrepare)
-	http.HandleFunc("/prepare", node.prepare)
-	http.HandleFunc("/commit", node.commit)
+	http.HandleFunc("/prePrepare", node.onPrePrepare)
+	http.HandleFunc("/prepare", node.onPrepare)
+	http.HandleFunc("/commit", node.onCommit)
 
 	// start up the server
 	err := http.ListenAndServe(node.path, nil)
@@ -87,18 +87,19 @@ func checkMAC(message, messageMAC, key []byte) bool {
 	return hmac.Equal(messageMAC, expectedMAC)
 }
 
+// phase 2: broadcast the initial message from primary to backups
 func (node *nodeInfo) onRequest(writer http.ResponseWriter, request *http.Request) {
 	// receive and parse the params
 	request.ParseForm()
 	if len(request.Form["message"]) > 0 {
 		node.writer = writer
 		hashed, sign, opts := generateRSASignature(request.Form["message"][0])
-		node.broadcastPrePrepare(sign, "/prePrepare", hashed, opts)
+		node.broadcastPrePrepare(sign, "/onPrePrepare", hashed, opts)
 	}
 
 }
 
-// the broadcast in pre-prepare phase - primary 0 multicasts to 1,2,3
+// the broadcast in pre-onPrepare phase - primary 0 multicasts to 1,2,3
 func (node *nodeInfo) broadcastPrePrepare(sign []byte, path string, hashed []byte, opts *rsa.PSSOptions) {
 	e := rsa.VerifyPSS(pubK, crypto.MD5, hashed, []byte(sign), opts)
 
@@ -121,7 +122,7 @@ func (node *nodeInfo) broadcastPrePrepare(sign []byte, path string, hashed []byt
 
 }
 
-// the broadcast in prepare and commit phase
+// the broadcast in onPrepare and onCommit phase
 func (node *nodeInfo) broadcast(path string, message []byte, mac []byte) {
 	for nodeId, _url := range nodeTable {
 
@@ -137,8 +138,8 @@ func (node *nodeInfo) broadcast(path string, message []byte, mac []byte) {
 	}
 }
 
-// Primary 0 receives the onRequest from C and multicasts it to backups.
-func (node *nodeInfo) prePrepare(writer http.ResponseWriter, request *http.Request) {
+// phase 3: Primary 0 receives the onRequest from C and multicasts it to backups.
+func (node *nodeInfo) onPrePrepare(writer http.ResponseWriter, request *http.Request) {
 	if node.writer == nil {
 		node.writer = writer
 	}
@@ -153,18 +154,18 @@ func (node *nodeInfo) prePrepare(writer http.ResponseWriter, request *http.Reque
 		//nodeId := onRequest.Form["nodeId"][0]
 		isMACEqual := checkMAC([]byte(message), []byte(mac), []byte(sessionK))
 		if isMACEqual {
-			newMsg := "message for prepare"
+			newMsg := "message for onPrepare"
 			newMAC := generateMAC([]byte(newMsg), []byte(sessionK))
-			node.broadcast("/prepare", []byte(newMsg), newMAC)
+			node.broadcast("/onPrepare", []byte(newMsg), newMAC)
 		} else {
-			fmt.Println("prePrepare: authentication failed")
+			fmt.Println("onPrePrepare: authentication failed")
 		}
 	}
 
 }
 
-// Replicas execute the onRequest and then re-broadcast the result to each other
-func (node *nodeInfo) prepare(writer http.ResponseWriter, request *http.Request) {
+// phase 4: Replicas execute the onRequest and then re-broadcast the result to each other
+func (node *nodeInfo) onPrepare(writer http.ResponseWriter, request *http.Request) {
 	if node.writer == nil {
 		node.writer = writer
 	}
@@ -201,20 +202,20 @@ func (node *nodeInfo) authentication(request *http.Request) {
 			mac := request.PostFormValue("mac")
 			isMACEqual := checkMAC([]byte(message), []byte(mac), []byte(sessionK))
 			if isMACEqual {
-				// then PBFT consensus is achieved; commit the feedback to browser
-				newMsg := "message for commit"
+				// then PBFT consensus is achieved; onCommit the feedback to browser
+				newMsg := "message for onCommit"
 				newMAC := generateMAC([]byte(newMsg), []byte(sessionK))
-				node.broadcast("/commit", []byte(newMsg), []byte(newMAC))
+				node.broadcast("/onCommit", []byte(newMsg), []byte(newMAC))
 			} else {
-				fmt.Println("prepare: authentication failed")
+				fmt.Println("onPrepare: authentication failed")
 			}
 		}
 	}
 
 }
 
-// commit the feedback to the browser
-func (node *nodeInfo) commit(writer http.ResponseWriter, request *http.Request) {
+// phase 5: reply the feedback to the browser
+func (node *nodeInfo) onCommit(writer http.ResponseWriter, request *http.Request) {
 	if node.writer == nil {
 		node.writer = writer
 	}
@@ -223,10 +224,10 @@ func (node *nodeInfo) commit(writer http.ResponseWriter, request *http.Request) 
 		mac := request.PostFormValue("mac")
 		isMACEqual := checkMAC([]byte(message), []byte(mac), []byte(sessionK))
 		if isMACEqual {
-			// then PBFT consensus is achieved; commit the feedback to browser
+			// then PBFT consensus is achieved; onCommit the feedback to browser
 			io.WriteString(node.writer, "authentication successful from node "+request.PostFormValue("nodeId")+"\n")
 		} else {
-			fmt.Println("commit: authentication failed")
+			fmt.Println("onCommit: authentication failed")
 		}
 	}
 
