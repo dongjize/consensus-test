@@ -29,7 +29,7 @@ type Block struct {
 	Nonce      string
 }
 
-var Blockchain []Block
+var blockchain []Block
 
 type Message struct {
 	data string
@@ -118,7 +118,7 @@ func makeMuxRouter() http.Handler {
 }
 
 func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
-	bytes, err := json.MarshalIndent(Blockchain, "", "  ")
+	bytes, err := json.MarshalIndent(blockchain, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -139,12 +139,12 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 
 	//ensure atomicity when creating new block
 	mutex.Lock()
-	newBlock := generateBlock(Blockchain[len(Blockchain)-1], m.data)
+	newBlock := generateBlock(blockchain[len(blockchain)-1], m.data)
 	mutex.Unlock()
 
-	if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
-		Blockchain = append(Blockchain, newBlock)
-		spew.Dump(Blockchain)
+	if isBlockValid(newBlock, blockchain[len(blockchain)-1]) {
+		blockchain = append(blockchain, newBlock)
+		spew.Dump(blockchain)
 	}
 
 	respondWithJSON(w, r, http.StatusCreated, newBlock)
@@ -172,7 +172,7 @@ func main() {
 		spew.Dump(genesisBlock)
 
 		mutex.Lock()
-		Blockchain = append(Blockchain, genesisBlock)
+		blockchain = append(blockchain, genesisBlock)
 		mutex.Unlock()
 	}()
 	log.Fatal(run())

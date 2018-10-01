@@ -3,54 +3,72 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strconv"
 	"time"
 )
 
-type PBlock struct {
+var blockchain []Block
+
+type Block struct {
 	Index     int    // height of the block
 	Data      string // (transaction) data
-	PreHash   string // SHA256 hash value of previous node
+	PrevHash  string // SHA256 hash value of previous node
 	Hash      string // SHA256 hash value of current node
 	Timestamp string // transaction timestamp
-	Validator *PNode // the node that validates this block
+	Validator *Node  // the node that validates this block
 }
 
-func genesisBlock() PBlock {
-	var genesisBlock = PBlock{0, "Genesis block", "", "", time.Now().String(), &PNode{0, 0, "dd"}}
-	genesisBlock.Hash = hex.EncodeToString(blockHash(&genesisBlock))
+func genesisBlock() Block {
+	var genesisBlock = Block{0, "Genesis block", "", "", time.Now().String(), &Node{0, 0, "dd"}}
+	genesisBlock.Hash = calculateHash(genesisBlock)
 	return genesisBlock
 }
 
-func blockHash(block *PBlock) []byte {
-	record := strconv.Itoa(block.Index) + block.Data + block.PreHash + block.Timestamp + block.Validator.Address
+func calculateHash(block Block) string {
+	record := strconv.Itoa(block.Index) + block.Data + block.PrevHash + block.Timestamp + block.Validator.Address
 	h := sha256.New()
 	h.Write([]byte(record))
 	hashed := h.Sum(nil)
-	return hashed
+	return hex.EncodeToString(hashed)
 }
 
-type PNode struct {
+func isBlockValid(newBlock, oldBlock Block) bool {
+	if oldBlock.Index+1 != newBlock.Index {
+		return false
+	}
+
+	if oldBlock.Hash != newBlock.PrevHash {
+		return false
+	}
+
+	if calculateHash(newBlock) != newBlock.Hash {
+		return false
+	}
+
+	return true
+}
+
+type Node struct {
 	Tokens  int    // amount of tokens in stock
 	Days    int    // time of stock
 	Address string // node address
 }
 
-//创建5个节点
-//算法的实现要满足 持币越多的节点越容易出块
-var nodes = make([]PNode, 5)
+// create 5 nodes
+// the more the node stakes, the easier it will win
+var nodes = make([]Node, 5)
 
-//存放节点的地址
-var addr = make([]*PNode, 15)
+var addr = make([]*Node, 15)
 
-func InitNodes() {
-	nodes[0] = PNode{1, 1, "0x12341"}
-	nodes[1] = PNode{2, 1, "0x12342"}
-	nodes[2] = PNode{3, 1, "0x12343"}
-	nodes[3] = PNode{4, 1, "0x12344"}
-	nodes[4] = PNode{5, 1, "0x12345"}
+func initNodes() {
+	nodes[0] = Node{1, 1, "0x12341"}
+	nodes[1] = Node{2, 1, "0x12342"}
+	nodes[2] = Node{3, 1, "0x12343"}
+	nodes[3] = Node{4, 1, "0x12344"}
+	nodes[4] = Node{5, 1, "0x12345"}
 	cnt := 0
 	for i := 0; i < 5; i++ {
 		for j := 0; j < nodes[i].Tokens*nodes[i].Days; j++ {
@@ -67,35 +85,38 @@ func InitNodes() {
 	fmt.Print("\n")
 }
 
-//采用Pos共识算法进行挖矿
-func CreateNewBlock(lastBlock *PBlock, data string) PBlock {
-	var newBlock PBlock
+func createNewBlock(lastBlock Block, data string) Block {
+	var newBlock Block
 	newBlock.Index = lastBlock.Index + 1
 	newBlock.Timestamp = time.Now().String()
-	newBlock.PreHash = lastBlock.Hash
+	newBlock.PrevHash = lastBlock.Hash
 	newBlock.Data = data
-	//通过pos计算由那个村民挖矿
-	//设置随机种子
 	time.Sleep(100000000)
 	rand.Seed(time.Now().Unix())
-	//[0,15)产生0-15的随机值
 	var rd = rand.Intn(15)
-	//选出挖矿的旷工
 	node := addr[rd]
-	fmt.Printf("Now node %s produce block by pos algorithm.\n", node.Address)
-	//设置当前区块挖矿地址为旷工
+	fmt.Println()
+	fmt.Printf("Node %s adds a block.\n", node.Address)
 	newBlock.Validator = node
-	//简单模拟 挖矿所得奖励
+	// the winner can get one token as reward
 	node.Tokens += 1
-	newBlock.Hash = hex.EncodeToString(blockHash(&newBlock))
+	newBlock.Hash = calculateHash(newBlock)
 	return newBlock
 }
+
 func main() {
-	InitNodes()
+	initNodes()
 	var genesisBlock = genesisBlock()
-	for i := 0; i < 100; i++ {
-		var newBlock = CreateNewBlock(&genesisBlock, "new block")
-		fmt.Print("New block info: \n")
-		fmt.Printf("Hash: %s, Coinbase: %s.\n", newBlock.Hash, newBlock.Validator.Address)
+	blockchain = append(blockchain, genesisBlock)
+	for i := 0; i < 20; i++ {
+		var newBlock = createNewBlock(blockchain[len(blockchain)-1], "new block")
+		if isBlockValid(newBlock, blockchain[len(blockchain)-1]) {
+			blockchain = append(blockchain, newBlock)
+		}
+		str0, _ := json.MarshalIndent(newBlock, "", " ")
+		fmt.Printf("%s\n", str0)
 	}
+
+	//fmt.Printf("%s\n", json.Marshal(blockchain))
+
 }
