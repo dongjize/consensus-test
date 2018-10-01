@@ -118,6 +118,4 @@ func main() {
 		fmt.Printf("%s\n", str0)
 	}
 
-	//fmt.Printf("%s\n", json.Marshal(blockchain))
-
 }

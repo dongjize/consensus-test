@@ -3,11 +3,14 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strconv"
 	"time"
 )
+
+var blockchain []Block
 
 type Block struct {
 	Index     int
@@ -20,17 +23,33 @@ type Block struct {
 
 func GenesisBlock() Block {
 	gene := Block{0, time.Now().String(), "", "", []byte("genesis block"), nil}
-	gene.Hash = string(blockHash(gene))
+	gene.Hash = string(calculateHash(gene))
 	return Block{}
 }
 
 // generate the hash of a block
-func blockHash(block Block) []byte {
+func calculateHash(block Block) string {
 	record := strconv.Itoa(block.Index) + block.Timestamp + block.PrevHash + hex.EncodeToString(block.Data)
 	h := sha256.New()
 	h.Write([]byte(record))
 	hashed := h.Sum(nil)
-	return hashed
+	return hex.EncodeToString(hashed)
+}
+
+func isBlockValid(newBlock, oldBlock Block) bool {
+	if oldBlock.Index+1 != newBlock.Index {
+		return false
+	}
+
+	if oldBlock.Hash != newBlock.PrevHash {
+		return false
+	}
+
+	if calculateHash(newBlock) != newBlock.Hash {
+		return false
+	}
+
+	return true
 }
 
 //节点类型
@@ -41,7 +60,7 @@ type Node struct {
 
 func (node *Node) GenerateNewBlock(lastBlock Block, data []byte) Block {
 	var newBlock = Block{lastBlock.Index + 1, time.Now().String(), lastBlock.Hash, "", data, nil}
-	newBlock.Hash = hex.EncodeToString(blockHash(newBlock))
+	newBlock.Hash = calculateHash(newBlock)
 	newBlock.Delegate = node
 	return newBlock
 }
@@ -89,13 +108,20 @@ func main() {
 	fmt.Print("###### Get super node: \n")
 	fmt.Println(nodes)
 	// create the genesis block
-	gene := GenesisBlock()
-	lastBlock := gene
+	genesisBlock := GenesisBlock()
+	newBlock := genesisBlock
+
+	blockchain = append(blockchain, genesisBlock)
+
 	fmt.Print("###### Begin producing block: \n")
 	for i := 0; i < len(nodes); i++ {
 		fmt.Printf("Node [%s] genenrates block with votes %d.\n", nodes[i].Name, nodes[i].Votes)
-		lastBlock = nodes[i].GenerateNewBlock(lastBlock, []byte(fmt.Sprintf("new block %d", i)))
-		fmt.Print(lastBlock)
-		fmt.Print("\n")
+		newBlock = nodes[i].GenerateNewBlock(newBlock, []byte(fmt.Sprintf("new block %d", i)))
+
+		if isBlockValid(newBlock, blockchain[len(blockchain)-1]) {
+			blockchain = append(blockchain, newBlock)
+		}
+		str0, _ := json.MarshalIndent(newBlock, "", " ")
+		fmt.Printf("%s\n", str0)
 	}
 }
