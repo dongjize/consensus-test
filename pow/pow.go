@@ -3,38 +3,36 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 )
 
-//pow 挖矿算法
-//定义难度系数
-//const difficulty = 4
 var difficulty int
 
 type Block struct {
-	Index      int // 区块高度
+	Index      int // height of the block
 	TimeStamp  int64
-	Data       string //交易记录
+	Data       string // transaction record
 	Hash       string
 	PrevHash   string
 	Nonce      int
-	Difficulty int //难度系数
+	Difficulty int // i.e. the count of zeros prefixing the hash value
 }
 
 //创建区块链
-var BlockChain []Block
+var blockchain []*Block
 
 //创世区块
-func GenesisBlock() *Block {
+func genesisBlock() *Block {
 	var geneBlock = Block{0, time.Now().Unix(), "", "", "", 0, difficulty}
-	geneBlock.Hash = hex.EncodeToString(BlockHash(geneBlock))
+	geneBlock.Hash = hex.EncodeToString(blockHash(geneBlock))
 	return &geneBlock
 }
 
-func BlockHash(block Block) []byte {
+func blockHash(block Block) []byte {
 	re := strconv.Itoa(block.Index) + strconv.Itoa(int(block.TimeStamp)) + block.Data + block.PrevHash +
 		strconv.Itoa(block.Nonce) + strconv.Itoa(block.Difficulty)
 	h := sha256.New()
@@ -48,8 +46,7 @@ func isBlockValid(block Block) bool {
 	return strings.HasPrefix(block.Hash, prefix)
 }
 
-//创建新区块 pow挖矿
-func CreateNewBlock(lastBlock *Block, data string) *Block {
+func createNewBlock(lastBlock *Block, data string) *Block {
 	var newBlock Block
 	newBlock.Index = lastBlock.Index + 1
 	newBlock.TimeStamp = time.Now().Unix()
@@ -57,16 +54,15 @@ func CreateNewBlock(lastBlock *Block, data string) *Block {
 	newBlock.PrevHash = lastBlock.Hash
 	newBlock.Difficulty = difficulty
 	newBlock.Nonce = 0
-	//开挖-当前区块的hash值的前面的0的个数与难度系数值相同
+	// begin mining - the difficulty depends on the count of zeros prefixing the hash value
 	for {
 		//计算hash
-		cuhash := hex.EncodeToString(BlockHash(newBlock))
-		//fmt.Println("挖矿中: ", cuhash)
+		cuhash := hex.EncodeToString(blockHash(newBlock))
 		newBlock.Hash = cuhash
 		if isBlockValid(newBlock) {
-			//校验区块
-			if VerflyBlock(newBlock, *lastBlock) {
-				fmt.Println("挖矿成功: ", cuhash)
+			// verify the block
+			if verifyBlock(newBlock, *lastBlock) {
+				fmt.Println("mining successful: ", cuhash)
 				return &newBlock
 			}
 		}
@@ -75,7 +71,7 @@ func CreateNewBlock(lastBlock *Block, data string) *Block {
 	}
 }
 
-func VerflyBlock(newblock Block, lastBlock Block) bool {
+func verifyBlock(newblock Block, lastBlock Block) bool {
 	if lastBlock.Index+1 != newblock.Index {
 		return false
 	}
@@ -86,14 +82,19 @@ func VerflyBlock(newblock Block, lastBlock Block) bool {
 }
 
 func main() {
-	var genBlock = GenesisBlock()
+	var genBlock = genesisBlock()
 	var newBlock *Block
 	newBlock = genBlock
-	for i := 0; i < 10; i++ {
-		newBlock = CreateNewBlock(newBlock, fmt.Sprintf("new block %d", i))
+	for i := 0; i < 6; i++ {
+		newBlock = createNewBlock(newBlock, fmt.Sprintf("new block %d", i))
+		blockchain = append(blockchain, newBlock)
 		difficulty = i + 2
 		fmt.Print("New block info: \n")
 		fmt.Printf("height [%d], hash [%s], data [%s], nonce [%d], difficulty [%d].\n",
 			newBlock.Index, newBlock.Hash, newBlock.Data, newBlock.Nonce, newBlock.Difficulty)
 	}
+
+	bytes, _ := json.MarshalIndent(blockchain, "", "  ")
+	fmt.Println("========== Blockchain ==========")
+	fmt.Println(string(bytes))
 }

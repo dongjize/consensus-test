@@ -22,11 +22,11 @@ type PBlock struct {
 
 func genesisBlock() PBlock {
 	var genesBlock = PBlock{0, "Genesis block", "", "", time.Now().String(), &PNode{0, 0, "dd"}}
-	genesBlock.Hash = hex.EncodeToString(BlockHash(&genesBlock))
+	genesBlock.Hash = hex.EncodeToString(blockHash(&genesBlock))
 	return genesBlock
 }
 
-func BlockHash(block *PBlock) []byte {
+func blockHash(block *PBlock) []byte {
 	record := strconv.Itoa(block.Index) + block.Data + block.PreHash + block.Timestamp + block.Validator.Address
 	h := sha256.New()
 	h.Write([]byte(record))
@@ -90,7 +90,7 @@ func CreateNewBlock(lastBlock *PBlock, data string) PBlock {
 	newBlock.Validator = node
 	//简单模拟 挖矿所得奖励
 	node.Tokens += 1
-	newBlock.Hash = hex.EncodeToString(BlockHash(&newBlock))
+	newBlock.Hash = hex.EncodeToString(blockHash(&newBlock))
 	return newBlock
 }
 func main() {
