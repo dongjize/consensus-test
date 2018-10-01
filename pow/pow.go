@@ -5,129 +5,178 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/gorilla/mux"
 )
 
-var difficulty = 4
-
-type NodeInfo struct {
-	id     string
-	path   string
-	writer http.ResponseWriter
-}
+const difficulty = 1
 
 type Block struct {
-	Index      int    // height of the block
-	TimeStamp  int64  // transaction timestamp
-	Data       string // transaction record
-	Hash       string // SHA256 hash value of current node
-	PrevHash   string // SHA256 hash value of previous node
-	Nonce      int    // the number we are looking for in the PoW mining
-	Difficulty int    // i.e. the count of zeros prefixing the hash value
+	Index      int
+	Timestamp  string
+	Data       string
+	Hash       string
+	PrevHash   string
+	Difficulty int
+	Nonce      string
 }
 
-//创建区块链
-var blockchain []*Block
+var Blockchain []Block
 
-//创世区块
-func genesisBlock() *Block {
-	var geneBlock = Block{0, time.Now().Unix(), "", "", "", 0, difficulty}
-	geneBlock.Hash = hex.EncodeToString(blockHash(geneBlock))
-	return &geneBlock
+type Message struct {
+	data string
 }
 
-func blockHash(block Block) []byte {
-	re := strconv.Itoa(block.Index) + strconv.Itoa(int(block.TimeStamp)) + block.Data + block.PrevHash +
-		strconv.Itoa(block.Nonce) + strconv.Itoa(block.Difficulty)
-	h := sha256.New()
-	h.Write([]byte(re))
-	hashed := h.Sum(nil)
-	return hashed
-}
+var mutex = &sync.Mutex{}
 
-func isBlockValid(block Block) bool {
-	prefix := strings.Repeat("0", block.Difficulty)
-	return strings.HasPrefix(block.Hash, prefix)
-}
-
-func createNewBlock(lastBlock *Block, data string) *Block {
+func generateBlock(oldBlock Block, data string) Block {
 	var newBlock Block
-	newBlock.Index = lastBlock.Index + 1
-	newBlock.TimeStamp = time.Now().Unix()
+
+	t := time.Now()
+
+	newBlock.Index = oldBlock.Index + 1
+	newBlock.Timestamp = t.String()
 	newBlock.Data = data
-	newBlock.PrevHash = lastBlock.Hash
+	newBlock.PrevHash = oldBlock.Hash
 	newBlock.Difficulty = difficulty
-	newBlock.Nonce = 0
-	// begin mining - the difficulty depends on the count of zeros prefixing the hash value
-	for {
-		// calculate hash
-		newBlock.Hash = hex.EncodeToString(blockHash(newBlock))
-		if isBlockValid(newBlock) {
-			// verify the block
-			if verifyBlock(newBlock, *lastBlock) {
-				fmt.Println("mining successful: ", newBlock.Hash)
-				return &newBlock
-			}
+
+	for i := 0; ; i++ {
+		hex := fmt.Sprintf("%x", i)
+		newBlock.Nonce = hex
+		if !isHashValid(calculateHash(newBlock), newBlock.Difficulty) {
+			fmt.Println(calculateHash(newBlock), " do more work!")
+			time.Sleep(time.Second)
+			continue
+		} else {
+			fmt.Println(calculateHash(newBlock), " work done!")
+			newBlock.Hash = calculateHash(newBlock)
+			break
 		}
 
-		newBlock.Nonce++
 	}
+	return newBlock
 }
 
-func verifyBlock(newblock Block, lastBlock Block) bool {
-	if lastBlock.Index+1 != newblock.Index {
+func isHashValid(hash string, difficulty int) bool {
+	//复制 difficulty 个0，并返回新字符串，当 difficulty 为2 ，则 prefix 为 00
+	prefix := strings.Repeat("0", difficulty)
+	// HasPrefix判断字符串 hash 是否包含前缀 prefix
+	return strings.HasPrefix(hash, prefix)
+}
+
+func calculateHash(block Block) string {
+	record := strconv.Itoa(block.Index) + block.Timestamp + block.Data + block.PrevHash + block.Nonce
+	h := sha256.New()
+	h.Write([]byte(record))
+	hashed := h.Sum(nil)
+	return hex.EncodeToString(hashed)
+}
+
+func isBlockValid(newBlock, oldBlock Block) bool {
+	if oldBlock.Index+1 != newBlock.Index {
 		return false
 	}
-	if newblock.PrevHash != lastBlock.Hash {
+	if oldBlock.Hash != newBlock.PrevHash {
+		return false
+	}
+	if calculateHash(newBlock) != newBlock.Hash {
 		return false
 	}
 	return true
 }
 
-var nodeTable = make(map[string]string)
+func run() error {
+	mux := makeMuxRouter()
+	httpAddr := "8080"
+	log.Println("Listening on", httpAddr)
+	s := &http.Server{
+		Addr:           ":" + httpAddr,
+		Handler:        mux,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
+	if err := s.ListenAndServe(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func makeMuxRouter() http.Handler {
+	muxRouter := mux.NewRouter()
+	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
+	muxRouter.HandleFunc("/", handleWriteBlock).Methods("POST")
+	return muxRouter
+}
+
+func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
+	bytes, err := json.MarshalIndent(Blockchain, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	io.WriteString(w, string(bytes))
+}
+
+func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var m Message
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&m); err != nil {
+		respondWithJSON(w, r, http.StatusBadRequest, r.Body)
+		return
+	}
+	defer r.Body.Close()
+
+	//ensure atomicity when creating new block
+	mutex.Lock()
+	newBlock := generateBlock(Blockchain[len(Blockchain)-1], m.data)
+	mutex.Unlock()
+
+	if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
+		Blockchain = append(Blockchain, newBlock)
+		spew.Dump(Blockchain)
+	}
+
+	respondWithJSON(w, r, http.StatusCreated, newBlock)
+
+}
+
+func respondWithJSON(w http.ResponseWriter, r *http.Request, code int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	response, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("HTTP 500: Internal Server Error"))
+		return
+	}
+	w.WriteHeader(code)
+	w.Write(response)
+}
 
 func main() {
 
-	userId := os.Args[1]
-	fmt.Println("node " + userId)
+	go func() {
+		t := time.Now()
+		genesisBlock := Block{}
+		genesisBlock = Block{0, t.String(), "hello world", calculateHash(genesisBlock), "", difficulty, ""}
+		spew.Dump(genesisBlock)
 
-	//./main Arsenal
+		mutex.Lock()
+		Blockchain = append(Blockchain, genesisBlock)
+		mutex.Unlock()
+	}()
+	log.Fatal(run())
 
-	// initiate the addresses of the four countries
-	nodeTable = map[string]string{
-		"0": "localhost:1110",
-		"1": "localhost:1111",
-		"2": "localhost:1112",
-		"3": "localhost:1113",
-	}
-
-	node := NodeInfo{userId, nodeTable[userId], nil}
-
-
-	http.HandleFunc("/req", node.onRequest)
-
-	// start up the server
-	err := http.ListenAndServe(node.path, nil)
-	if err != nil {
-		fmt.Print(err)
-	}
-
-	var genBlock = genesisBlock()
-	var newBlock *Block
-	newBlock = genBlock
-	for i := 0; i < 10; i++ {
-		newBlock = createNewBlock(newBlock, fmt.Sprintf("new block %d", i))
-		blockchain = append(blockchain, newBlock)
-		fmt.Print("New block info: \n")
-		fmt.Printf("height [%d], hash [%s], data [%s], nonce [%d], difficulty [%d].\n",
-			newBlock.Index, newBlock.Hash, newBlock.Data, newBlock.Nonce, newBlock.Difficulty)
-	}
-
-	bytes, _ := json.MarshalIndent(blockchain, "", "  ")
-	fmt.Println("========== Blockchain ==========")
-	fmt.Println(string(bytes))
 }
