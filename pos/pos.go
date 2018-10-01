@@ -94,7 +94,7 @@ func createNewBlock(lastBlock Block, data string) Block {
 	time.Sleep(100000000)
 	randMaker := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var rd = randMaker.Intn(15)
-	fmt.Print(rd)
+	// fmt.Print(rd)
 	node := addr[rd]
 	fmt.Println()
 	fmt.Printf("Node %s adds a block.\n", node.Address)
