@@ -66,9 +66,7 @@ func generateBlock(oldBlock Block, data string) Block {
 }
 
 func isHashValid(hash string, difficulty int) bool {
-	//复制 difficulty 个0，并返回新字符串，当 difficulty 为2 ，则 prefix 为 00
 	prefix := strings.Repeat("0", difficulty)
-	// HasPrefix判断字符串 hash 是否包含前缀 prefix
 	return strings.HasPrefix(hash, prefix)
 }
 

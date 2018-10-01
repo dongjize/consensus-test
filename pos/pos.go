@@ -19,9 +19,9 @@ type PBlock struct {
 }
 
 func genesisBlock() PBlock {
-	var genesBlock = PBlock{0, "Genesis block", "", "", time.Now().String(), &PNode{0, 0, "dd"}}
-	genesBlock.Hash = hex.EncodeToString(blockHash(&genesBlock))
-	return genesBlock
+	var genesisBlock = PBlock{0, "Genesis block", "", "", time.Now().String(), &PNode{0, 0, "dd"}}
+	genesisBlock.Hash = hex.EncodeToString(blockHash(&genesisBlock))
+	return genesisBlock
 }
 
 func blockHash(block *PBlock) []byte {
