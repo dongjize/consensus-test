@@ -15,7 +15,7 @@ import (
 )
 
 // declare node info, representing small countries
-type nodeInfo struct {
+type NodeInfo struct {
 	id     string
 	path   string
 	writer http.ResponseWriter
@@ -45,7 +45,7 @@ func main() {
 	privK, _ = rsa.GenerateKey(rand.Reader, 1024)
 	pubK = &privK.PublicKey
 
-	node := nodeInfo{userId, nodeTable[userId], nil}
+	node := NodeInfo{userId, nodeTable[userId], nil}
 	fmt.Println(node)
 
 	//http协议的回调函数
@@ -88,7 +88,7 @@ func checkMAC(message, messageMAC, key []byte) bool {
 }
 
 // phase 2: broadcast the initial message from primary to backups
-func (node *nodeInfo) onRequest(writer http.ResponseWriter, request *http.Request) {
+func (node *NodeInfo) onRequest(writer http.ResponseWriter, request *http.Request) {
 	fmt.Println("==========")
 	fmt.Println("STAGE PRE-PREPARE")
 
@@ -105,7 +105,7 @@ func (node *nodeInfo) onRequest(writer http.ResponseWriter, request *http.Reques
 }
 
 // the broadcast in pre-onPrepare phase - primary 0 multicasts to 1,2,3
-func (node *nodeInfo) broadcastPrePrepare(sign []byte, path string, hashed []byte, opts *rsa.PSSOptions) {
+func (node *NodeInfo) broadcastPrePrepare(sign []byte, path string, hashed []byte, opts *rsa.PSSOptions) {
 	e := rsa.VerifyPSS(pubK, crypto.MD5, hashed, []byte(sign), opts)
 
 	if e != nil {
@@ -128,7 +128,7 @@ func (node *nodeInfo) broadcastPrePrepare(sign []byte, path string, hashed []byt
 }
 
 // the broadcast in onPrepare and onCommit phase
-func (node *nodeInfo) broadcast(path string, message []byte, mac []byte) {
+func (node *NodeInfo) broadcast(path string, message []byte, mac []byte) {
 	for nodeId, _url := range nodeTable {
 
 		if nodeId == node.id {
@@ -143,7 +143,7 @@ func (node *nodeInfo) broadcast(path string, message []byte, mac []byte) {
 }
 
 // phase 3: Primary 0 receives the onRequest from C and multicasts it to backups.
-func (node *nodeInfo) onPrePrepare(writer http.ResponseWriter, request *http.Request) {
+func (node *NodeInfo) onPrePrepare(writer http.ResponseWriter, request *http.Request) {
 	fmt.Println("==========")
 	fmt.Println("STAGE PRE-PREPARE")
 
@@ -175,7 +175,7 @@ func (node *nodeInfo) onPrePrepare(writer http.ResponseWriter, request *http.Req
 }
 
 // phase 4: Replicas execute the onRequest and then re-broadcast the result to each other
-func (node *nodeInfo) onPrepare(writer http.ResponseWriter, request *http.Request) {
+func (node *NodeInfo) onPrepare(writer http.ResponseWriter, request *http.Request) {
 	fmt.Println("==========")
 	fmt.Println("STAGE COMMIT")
 
@@ -199,7 +199,7 @@ func (node *nodeInfo) onPrepare(writer http.ResponseWriter, request *http.Reques
 var authenticationMap = make(map[string]string)
 
 // receive other nodes' info except that of self
-func (node *nodeInfo) authentication(request *http.Request) {
+func (node *NodeInfo) authentication(request *http.Request) {
 
 	//接收参数
 	request.ParseForm()
@@ -228,7 +228,7 @@ func (node *nodeInfo) authentication(request *http.Request) {
 }
 
 // phase 5: reply the feedback to the browser
-func (node *nodeInfo) onCommit(writer http.ResponseWriter, request *http.Request) {
+func (node *NodeInfo) onCommit(writer http.ResponseWriter, request *http.Request) {
 	fmt.Println("==========")
 	fmt.Println("STAGE REPLY")
 	if node.writer == nil {

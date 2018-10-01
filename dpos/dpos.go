@@ -1,4 +1,4 @@
-package dpos
+package main
 
 import (
 	"crypto/sha256"

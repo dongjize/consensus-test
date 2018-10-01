@@ -9,15 +9,13 @@ import (
 	"time"
 )
 
-//实现pos挖矿的原理
 type PBlock struct {
-	Index     int
-	Data      string //
-	PreHash   string
-	Hash      string
-	Timestamp string
-	//记录挖矿节点
-	Validator *PNode
+	Index     int    // height of the block
+	Data      string // (transaction) data
+	PreHash   string // SHA256 hash value of previous node
+	Hash      string // SHA256 hash value of current node
+	Timestamp string // transaction timestamp
+	Validator *PNode // the node that validates this block
 }
 
 func genesisBlock() PBlock {
@@ -34,11 +32,10 @@ func blockHash(block *PBlock) []byte {
 	return hashed
 }
 
-//创建全节点类型
 type PNode struct {
-	Tokens  int    //持币数量
-	Days    int    //持币时间
-	Address string //地址
+	Tokens  int    // amount of tokens in stock
+	Days    int    // time of stock
+	Address string // node address
 }
 
 //创建5个节点
@@ -95,12 +92,9 @@ func CreateNewBlock(lastBlock *PBlock, data string) PBlock {
 }
 func main() {
 	InitNodes()
-	//创建创世区块
 	var genesisBlock = genesisBlock()
-	//创建新区快
 	for i := 0; i < 100; i++ {
 		var newBlock = CreateNewBlock(&genesisBlock, "new block")
-		//打印新区快信息
 		fmt.Print("New block info: \n")
 		fmt.Printf("Hash: %s, Coinbase: %s.\n", newBlock.Hash, newBlock.Validator.Address)
 	}

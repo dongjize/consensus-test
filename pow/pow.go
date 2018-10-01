@@ -5,21 +5,29 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
-var difficulty int
+var difficulty = 4
+
+type NodeInfo struct {
+	id     string
+	path   string
+	writer http.ResponseWriter
+}
 
 type Block struct {
-	Index      int // height of the block
-	TimeStamp  int64
+	Index      int    // height of the block
+	TimeStamp  int64  // transaction timestamp
 	Data       string // transaction record
-	Hash       string
-	PrevHash   string
-	Nonce      int
-	Difficulty int // i.e. the count of zeros prefixing the hash value
+	Hash       string // SHA256 hash value of current node
+	PrevHash   string // SHA256 hash value of previous node
+	Nonce      int    // the number we are looking for in the PoW mining
+	Difficulty int    // i.e. the count of zeros prefixing the hash value
 }
 
 //创建区块链
@@ -56,13 +64,12 @@ func createNewBlock(lastBlock *Block, data string) *Block {
 	newBlock.Nonce = 0
 	// begin mining - the difficulty depends on the count of zeros prefixing the hash value
 	for {
-		//计算hash
-		cuhash := hex.EncodeToString(blockHash(newBlock))
-		newBlock.Hash = cuhash
+		// calculate hash
+		newBlock.Hash = hex.EncodeToString(blockHash(newBlock))
 		if isBlockValid(newBlock) {
 			// verify the block
 			if verifyBlock(newBlock, *lastBlock) {
-				fmt.Println("mining successful: ", cuhash)
+				fmt.Println("mining successful: ", newBlock.Hash)
 				return &newBlock
 			}
 		}
@@ -81,14 +88,40 @@ func verifyBlock(newblock Block, lastBlock Block) bool {
 	return true
 }
 
+var nodeTable = make(map[string]string)
+
 func main() {
+
+	userId := os.Args[1]
+	fmt.Println("node " + userId)
+
+	//./main Arsenal
+
+	// initiate the addresses of the four countries
+	nodeTable = map[string]string{
+		"0": "localhost:1110",
+		"1": "localhost:1111",
+		"2": "localhost:1112",
+		"3": "localhost:1113",
+	}
+
+	node := NodeInfo{userId, nodeTable[userId], nil}
+
+
+	http.HandleFunc("/req", node.onRequest)
+
+	// start up the server
+	err := http.ListenAndServe(node.path, nil)
+	if err != nil {
+		fmt.Print(err)
+	}
+
 	var genBlock = genesisBlock()
 	var newBlock *Block
 	newBlock = genBlock
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 10; i++ {
 		newBlock = createNewBlock(newBlock, fmt.Sprintf("new block %d", i))
 		blockchain = append(blockchain, newBlock)
-		difficulty = i + 2
 		fmt.Print("New block info: \n")
 		fmt.Printf("height [%d], hash [%s], data [%s], nonce [%d], difficulty [%d].\n",
 			newBlock.Index, newBlock.Hash, newBlock.Data, newBlock.Nonce, newBlock.Difficulty)
