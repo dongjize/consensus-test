@@ -90,7 +90,7 @@ func makeMuxRouter() http.Handler {
 	return muxRouter
 }
 
-// write blockchain when we receive an http request
+// write blockchain when we receive an http onRequest
 func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
 	bytes, err := json.MarshalIndent(Blockchain, "", "  ")
 	if err != nil {

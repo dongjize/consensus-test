@@ -50,7 +50,7 @@ func main() {
 
 	//http协议的回调函数
 	//http://localhost:1111/req?warTime=8888
-	http.HandleFunc("/req", node.request)
+	http.HandleFunc("/req", node.onRequest)
 	http.HandleFunc("/prePrepare", node.prePrepare)
 	http.HandleFunc("/prepare", node.prepare)
 	http.HandleFunc("/commit", node.commit)
@@ -87,19 +87,19 @@ func checkMAC(message, messageMAC, key []byte) bool {
 	return hmac.Equal(messageMAC, expectedMAC)
 }
 
-func (node *nodeInfo) request(writer http.ResponseWriter, request *http.Request) {
+func (node *nodeInfo) onRequest(writer http.ResponseWriter, request *http.Request) {
 	// receive and parse the params
 	request.ParseForm()
 	if len(request.Form["message"]) > 0 {
 		node.writer = writer
 		hashed, sign, opts := generateRSASignature(request.Form["message"][0])
-		node.broadcast0(sign, "/prePrepare", hashed, opts)
+		node.broadcastPrePrepare(sign, "/prePrepare", hashed, opts)
 	}
 
 }
 
-//由主节点向其他节点做广播
-func (node *nodeInfo) broadcast0(sign []byte, path string, hashed []byte, opts *rsa.PSSOptions) {
+// the broadcast in pre-prepare phase - primary 0 multicasts to 1,2,3
+func (node *nodeInfo) broadcastPrePrepare(sign []byte, path string, hashed []byte, opts *rsa.PSSOptions) {
 	e := rsa.VerifyPSS(pubK, crypto.MD5, hashed, []byte(sign), opts)
 
 	if e != nil {
@@ -121,6 +121,7 @@ func (node *nodeInfo) broadcast0(sign []byte, path string, hashed []byte, opts *
 
 }
 
+// the broadcast in prepare and commit phase
 func (node *nodeInfo) broadcast(path string, message []byte, mac []byte) {
 	for nodeId, _url := range nodeTable {
 
@@ -136,7 +137,7 @@ func (node *nodeInfo) broadcast(path string, message []byte, mac []byte) {
 	}
 }
 
-// Primary 0 receives the request from C and multicasts it to backups.
+// Primary 0 receives the onRequest from C and multicasts it to backups.
 func (node *nodeInfo) prePrepare(writer http.ResponseWriter, request *http.Request) {
 	if node.writer == nil {
 		node.writer = writer
@@ -149,7 +150,7 @@ func (node *nodeInfo) prePrepare(writer http.ResponseWriter, request *http.Reque
 		// distribute to the other 3 nodes
 		message := request.PostFormValue("message")
 		mac := request.PostFormValue("mac")
-		//nodeId := request.Form["nodeId"][0]
+		//nodeId := onRequest.Form["nodeId"][0]
 		isMACEqual := checkMAC([]byte(message), []byte(mac), []byte(sessionK))
 		if isMACEqual {
 			newMsg := "message for prepare"
@@ -162,7 +163,7 @@ func (node *nodeInfo) prePrepare(writer http.ResponseWriter, request *http.Reque
 
 }
 
-// Replicas execute the request and then re-broadcast the result to each other
+// Replicas execute the onRequest and then re-broadcast the result to each other
 func (node *nodeInfo) prepare(writer http.ResponseWriter, request *http.Request) {
 	if node.writer == nil {
 		node.writer = writer
@@ -205,7 +206,7 @@ func (node *nodeInfo) authentication(request *http.Request) {
 				newMAC := generateMAC([]byte(newMsg), []byte(sessionK))
 				node.broadcast("/commit", []byte(newMsg), []byte(newMAC))
 			} else {
-				fmt.Println("prePrepare: authentication failed")
+				fmt.Println("prepare: authentication failed")
 			}
 		}
 	}
