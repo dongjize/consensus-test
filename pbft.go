@@ -89,6 +89,9 @@ func checkMAC(message, messageMAC, key []byte) bool {
 
 // phase 2: broadcast the initial message from primary to backups
 func (node *nodeInfo) onRequest(writer http.ResponseWriter, request *http.Request) {
+	fmt.Println("==========")
+	fmt.Println("STAGE PRE-PREPARE")
+
 	// receive and parse the params
 	request.ParseForm()
 	if len(request.Form["message"]) > 0 {
@@ -133,15 +136,17 @@ func (node *nodeInfo) broadcast(path string, message []byte, mac []byte) {
 		}
 		isMACEqual := checkMAC(message, []byte(mac), []byte(sessionK))
 		if isMACEqual {
-			haha := "http://" + _url + path
 			data := url.Values{"message": {string(message)}, "mac": {string(mac)}, "nodeId": {node.id}}
-			http.PostForm(haha, data)
+			http.PostForm("http://"+_url+path, data)
 		}
 	}
 }
 
 // phase 3: Primary 0 receives the onRequest from C and multicasts it to backups.
 func (node *nodeInfo) onPrePrepare(writer http.ResponseWriter, request *http.Request) {
+	fmt.Println("==========")
+	fmt.Println("STAGE PRE-PREPARE")
+
 	if node.writer == nil {
 		node.writer = writer
 	}
@@ -153,10 +158,13 @@ func (node *nodeInfo) onPrePrepare(writer http.ResponseWriter, request *http.Req
 		// distribute to the other 3 nodes
 		message := request.PostFormValue("message")
 		mac := request.PostFormValue("mac")
-		//nodeId := onRequest.Form["nodeId"][0]
+		nodeId := request.PostFormValue("nodeId")
+		fmt.Println("message: " + message)
+		fmt.Println("MAC: " + mac)
+		fmt.Println("from node " + nodeId)
 		isMACEqual := checkMAC([]byte(message), []byte(mac), []byte(sessionK))
 		if isMACEqual {
-			newMsg := "message for prepare"
+			newMsg := "msg prepare"
 			newMAC := generateMAC([]byte(newMsg), []byte(sessionK))
 			node.broadcast("/prepare", []byte(newMsg), newMAC)
 		} else {
@@ -168,18 +176,21 @@ func (node *nodeInfo) onPrePrepare(writer http.ResponseWriter, request *http.Req
 
 // phase 4: Replicas execute the onRequest and then re-broadcast the result to each other
 func (node *nodeInfo) onPrepare(writer http.ResponseWriter, request *http.Request) {
+	fmt.Println("==========")
+	fmt.Println("STAGE COMMIT")
+
 	if node.writer == nil {
 		node.writer = writer
 	}
 	request.ParseForm()
 	if len(request.PostFormValue("message")) > 0 {
-		fmt.Println(request.PostFormValue("message"))
+		fmt.Println("message: " + request.PostFormValue("message"))
 	}
 	if len(request.PostFormValue("mac")) > 0 {
-		fmt.Println(request.PostFormValue("mac"))
+		fmt.Println("MAC: " + request.PostFormValue("mac"))
 	}
 	if len(request.PostFormValue("nodeId")) > 0 {
-		fmt.Println(request.PostFormValue("nodeId"))
+		fmt.Println("from node " + request.PostFormValue("nodeId"))
 	}
 
 	node.authentication(request)
@@ -194,7 +205,7 @@ func (node *nodeInfo) authentication(request *http.Request) {
 	request.ParseForm()
 
 	if len(request.Form["nodeId"]) > 0 {
-		authenticationMap[request.PostFormValue("nodeId")] = "ok"
+		authenticationMap[request.PostFormValue("nodeId")] = "authentication successful from node " + request.PostFormValue("nodeId") + "\n"
 	}
 
 	// if the received msg count > node table count * 1/3
@@ -205,7 +216,7 @@ func (node *nodeInfo) authentication(request *http.Request) {
 			isMACEqual := checkMAC([]byte(message), []byte(mac), []byte(sessionK))
 			if isMACEqual {
 				// then PBFT consensus is achieved; onCommit the feedback to browser
-				newMsg := "message for commit"
+				newMsg := "msg commit"
 				newMAC := generateMAC([]byte(newMsg), []byte(sessionK))
 				node.broadcast("/commit", []byte(newMsg), []byte(newMAC))
 			} else {
@@ -218,12 +229,19 @@ func (node *nodeInfo) authentication(request *http.Request) {
 
 // phase 5: reply the feedback to the browser
 func (node *nodeInfo) onCommit(writer http.ResponseWriter, request *http.Request) {
+	fmt.Println("==========")
+	fmt.Println("STAGE REPLY")
 	if node.writer == nil {
 		node.writer = writer
 	}
 	if len(request.PostFormValue("message")) > 0 && len(request.PostFormValue("mac")) > 0 {
 		message := request.PostFormValue("message")
 		mac := request.PostFormValue("mac")
+		nodeId := request.PostFormValue("nodeId")
+		fmt.Println("message: " + message)
+		fmt.Println("MAC: " + mac)
+		fmt.Println("from node " + nodeId)
+
 		isMACEqual := checkMAC([]byte(message), []byte(mac), []byte(sessionK))
 		if isMACEqual {
 			// then PBFT consensus is achieved; onCommit the feedback to browser
