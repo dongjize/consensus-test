@@ -21,7 +21,7 @@ type Block struct {
 	Delegate  *Node  // the miner
 }
 
-func GenesisBlock() Block {
+func genesisBlock() Block {
 	gene := Block{0, []byte("genesis block"), time.Now().String(), "", "", nil}
 	gene.Hash = string(calculateHash(gene))
 	return Block{}
@@ -57,36 +57,35 @@ type Node struct {
 	Votes int    // how many votes it gets
 }
 
-func (node *Node) GenerateNewBlock(lastBlock Block, data []byte) Block {
+func (node *Node) generateNewBlock(lastBlock Block, data []byte) Block {
 	var newBlock = Block{lastBlock.Index + 1, data, time.Now().String(), lastBlock.Hash, "", nil}
 	newBlock.Hash = calculateHash(newBlock)
 	newBlock.Delegate = node
 	return newBlock
 }
 
-var NodeArr = make([]Node, 100)
+var nodeArr = make([]Node, 100)
 
-func CreateNode() {
+func createNode() {
 	for i := 0; i < 100; i++ {
 		name := fmt.Sprintf("NODE %d num.", i+1)
-		NodeArr[i] = Node{name, 0}
+		nodeArr[i] = Node{name, 0}
 	}
 }
 
-//简单模拟投票
-func Vote() {
+func vote() {
 	for i := 0; i < 100; i++ {
 		rand.Seed(time.Now().UnixNano())
 		time.Sleep(100000)
 		vote := rand.Intn(10000) + 1
-		NodeArr[i].Votes = vote
+		nodeArr[i].Votes = vote
 		fmt.Printf("Node [%d] votes is [%d].\n", i, vote)
 	}
 }
 
 //elect the 21 nodes with most votes
-func SortNodes() []Node {
-	n := NodeArr
+func sortNodes() []Node {
+	n := nodeArr
 	for i := 0; i < len(n); i++ {
 		for j := 0; j < len(n)-1; j++ {
 			if n[j].Votes < n[j+1].Votes {
@@ -96,17 +95,18 @@ func SortNodes() []Node {
 	}
 	return n[:21]
 }
+
 func main() {
-	CreateNode()
+	createNode()
 	fmt.Print("###### Create node list: \n")
-	fmt.Println(NodeArr)
-	fmt.Print("###### Vote node: \n")
-	Vote()
-	nodes := SortNodes()
+	fmt.Println(nodeArr)
+	fmt.Print("###### vote node: \n")
+	vote()
+	nodes := sortNodes()
 	fmt.Print("###### Get super node: \n")
 	fmt.Println(nodes)
 	// create the genesis block
-	genesisBlock := GenesisBlock()
+	genesisBlock := genesisBlock()
 	newBlock := genesisBlock
 
 	blockchain = append(blockchain, genesisBlock)
@@ -114,7 +114,7 @@ func main() {
 	fmt.Print("###### Begin producing block: \n")
 	for i := 0; i < len(nodes); i++ {
 		fmt.Printf("Node [%s] genenrates block with votes %d.\n", nodes[i].Name, nodes[i].Votes)
-		newBlock = nodes[i].GenerateNewBlock(newBlock, []byte(fmt.Sprintf("new block %d", i)))
+		newBlock = nodes[i].generateNewBlock(newBlock, []byte(fmt.Sprintf("new block %d", i)))
 
 		if isBlockValid(newBlock, blockchain[len(blockchain)-1]) {
 			blockchain = append(blockchain, newBlock)
