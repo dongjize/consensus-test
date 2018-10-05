@@ -13,16 +13,16 @@ import (
 var blockchain []Block
 
 type Block struct {
-	Index     int
-	Timestamp string
-	PrevHash  string
-	Hash      string
-	Data      []byte
-	Delegate  *Node // the miner
+	Index     int    // height of the block
+	Data      []byte // (transaction) data
+	Timestamp string // transaction timestamp
+	PrevHash  string // SHA256 hash value of previous node
+	Hash      string // SHA256 hash value of current node
+	Delegate  *Node  // the miner
 }
 
 func GenesisBlock() Block {
-	gene := Block{0, time.Now().String(), "", "", []byte("genesis block"), nil}
+	gene := Block{0, []byte("genesis block"), time.Now().String(), "", "", nil}
 	gene.Hash = string(calculateHash(gene))
 	return Block{}
 }
@@ -52,20 +52,18 @@ func isBlockValid(newBlock, oldBlock Block) bool {
 	return true
 }
 
-//节点类型
 type Node struct {
-	Name  string //节点名称
-	Votes int    // 被选举的票数
+	Name  string // name of the node
+	Votes int    // how many votes it gets
 }
 
 func (node *Node) GenerateNewBlock(lastBlock Block, data []byte) Block {
-	var newBlock = Block{lastBlock.Index + 1, time.Now().String(), lastBlock.Hash, "", data, nil}
+	var newBlock = Block{lastBlock.Index + 1, data, time.Now().String(), lastBlock.Hash, "", nil}
 	newBlock.Hash = calculateHash(newBlock)
 	newBlock.Delegate = node
 	return newBlock
 }
 
-//创建节点
 var NodeArr = make([]Node, 100)
 
 func CreateNode() {

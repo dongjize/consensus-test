@@ -32,8 +32,6 @@ func main() {
 	userId := os.Args[1]
 	fmt.Println("node " + userId)
 
-	//./main Arsenal
-
 	// initiate the addresses of the four countries
 	nodeTable = map[string]string{
 		"0": "localhost:1110",
@@ -48,8 +46,6 @@ func main() {
 	node := NodeInfo{userId, nodeTable[userId], nil}
 	fmt.Println(node)
 
-	//http协议的回调函数
-	//http://localhost:1111/req?warTime=8888
 	http.HandleFunc("/req", node.onRequest)
 	http.HandleFunc("/prePrepare", node.onPrePrepare)
 	http.HandleFunc("/prepare", node.onPrepare)

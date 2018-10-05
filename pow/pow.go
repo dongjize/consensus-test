@@ -20,13 +20,13 @@ import (
 const difficulty = 1
 
 type Block struct {
-	Index      int
-	Timestamp  string
-	Data       string
-	Hash       string
-	PrevHash   string
-	Difficulty int
-	Nonce      string
+	Index      int    // height of the block
+	Timestamp  string // transaction timestamp
+	Data       string // transaction record
+	Hash       string // SHA256 hash value of current node
+	PrevHash   string // SHA256 hash value of previous node
+	Difficulty int    // i.e. the count of zeros prefixing the hash value
+	Nonce      string // the number we are looking for in the PoW mining
 }
 
 var blockchain []Block
