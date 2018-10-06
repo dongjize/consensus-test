@@ -17,7 +17,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-const difficulty = 1
+const difficulty = 2
 
 type Block struct {
 	Index      int    // height of the block
